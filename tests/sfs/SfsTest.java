@@ -9,7 +9,7 @@ import java.net.Socket;
 public class SfsTest {
 
     @Test
-    public void testServer() throws Exception {
+    public void testServer() throws IOException {
 
         ServerSocket server = new ServerSocket(4444);
         Socket socket = server.accept();
