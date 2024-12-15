@@ -1,55 +1,85 @@
 package sfs;
+
 import utils.MySerialization;
+
 import java.io.*;
 
-public class SimpleFileServerHandler {
+public class SimpleFileServerHandler implements Runnable {
 
     private InputStream is;
     private OutputStream os;
     private String receivedFileName;
     final byte VERSION_NUMBER = 1;
+    private String rootDirectory;
+    final byte GET_PDU = 0x00;
+    final byte PUT_PDU = 0x01;
+    final byte ERROR_PDU = 0x02;
+    final byte OK_PDU = 0x03;
+    private int THREAD_ID;
 
-    SimpleFileServerHandler(InputStream is, OutputStream os) throws IOException {
+
+    public SimpleFileServerHandler(InputStream is, OutputStream os, String rootDirectory, int threadID) throws IOException {
         this.is = is;
         this.os = os;
+        this.rootDirectory = rootDirectory;
+        this.THREAD_ID = threadID;
     }
 
-    public void runHandler() throws IOException {
+    public void run() {
 
-        DataInputStream dis = new DataInputStream(is);
+        try {
+            while (true) {
+                DataInputStream dis = new DataInputStream(is);
 
-        // read header from client
-        byte version = dis.readByte();
-        byte command = dis.readByte();
-        receivedFileName = dis.readUTF();
+                // read header from client
+                byte version = dis.readByte();
+                byte command = dis.readByte();
+                receivedFileName = dis.readUTF();
 
-        // answer to client according to request
-        if (command == 0) {
-            this.handleGET();
-            return;
+                // answer to client according to request
+                if (version != VERSION_NUMBER) {
+                    System.out.println("incompatible version");
+                    return;
+                }
+
+                switch (command) {
+                    case 0:
+                        this.handleGET();
+                        break;
+                    case 1:
+                        this.handlePUT();
+                        break;
+                    default:
+                        this.sendError(1, "invalid request");
+                }
+            }
+
+        } catch (IOException e) {
+            System.out.println("thread no " + this.THREAD_ID + ": connection closed by client");
+            // e.printStackTrace();
         }
 
-        if (command == 1) {
-            this.handlePUT();
-            return;
-        }
-
-        this.sendError(1, "invalid request");
     }
 
 
     public void handlePUT() throws IOException {
 
-        // TODO: cases?
-
+        // deserialize and save file
         MySerialization ms = new MySerialization();
-        ms.deserializeFile(is, "tests/test_files_server/" + receivedFileName);
-        this.sendOK();
+        ms.deserializeFile(is, rootDirectory + receivedFileName);
+
+        // check if file was saved successfully and inform client
+        File file = new File(rootDirectory + receivedFileName);
+        if (file.exists()) {
+            this.sendOK();
+        } else {
+            this.sendError(3, "file couldn't be saved");
+        }
     }
 
     public void handleGET() throws IOException {
 
-        File file = new File("tests/test_files_server/" + receivedFileName);
+        File file = new File(rootDirectory + receivedFileName);
         if (file.exists()) {
             this.putFile();
         } else {
@@ -60,45 +90,31 @@ public class SimpleFileServerHandler {
     public void putFile() throws IOException {
 
         DataOutputStream dos = new DataOutputStream(os);
-        File file = new File("tests/test_files_server/" + receivedFileName);
+        File file = new File(rootDirectory + receivedFileName);
 
-        // write header
-        dos.writeByte(VERSION_NUMBER); // 1. version
-        dos.writeByte(1); // 2. command: PUT
-        dos.writeUTF(receivedFileName); // 3. file name
-
-        // write file length and content
-        MySerialization ms = new MySerialization();
-        ms.serializeFile(file, os);
+        this.writeHeader(dos, PUT_PDU, receivedFileName);
+        MySerialization ms = new MySerialization(); // write file length
+        ms.serializeFile(file, os); // write file content
     }
 
     public void sendOK() throws IOException {
 
         DataOutputStream dos = new DataOutputStream(os);
-
-        // write
-        dos.writeByte(VERSION_NUMBER); // 1. version
-        dos.writeByte(3); // 2. command: OK
-        dos.writeUTF(receivedFileName); // 3. file name
+        this.writeHeader(dos, OK_PDU, receivedFileName);
     }
 
     public void sendError(int errorCode, String errorMessage) throws IOException {
 
         DataOutputStream dos = new DataOutputStream(os);
+        this.writeHeader(dos, ERROR_PDU, receivedFileName);
+        dos.writeInt(errorCode);
+        dos.writeUTF(errorMessage);
+    }
 
-        // write
-        dos.writeByte(VERSION_NUMBER); // 1. version
-        dos.writeByte(2); // 2. command: ERROR
-        dos.writeUTF(receivedFileName); // 3. file name
-        dos.writeInt(errorCode); // 4. error code
-        dos.writeUTF(errorMessage); // 5. error message
+    private void writeHeader(DataOutputStream dos, byte command, String fileName) throws IOException {
+
+        dos.writeByte(VERSION_NUMBER);
+        dos.writeByte(command);
+        dos.writeUTF(fileName);
     }
 }
-
-
-/*
-// TODO: "fix write failed (broken pipe)" error if versions are incompatible. put check elsewhere?
-        if (version != this.VERSION_NUMBER) {
-        this.sendError(0, "protocol versions not compatible");
-            return;
-                    }*/
