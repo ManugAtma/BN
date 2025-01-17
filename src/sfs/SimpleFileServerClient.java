@@ -83,7 +83,7 @@ public class SimpleFileServerClient {
         System.out.println("error message received from server: " + errorMessage);
     }
 
-    private void writeHeader(DataOutputStream dos, byte command, String fileName) throws IOException {
+    public void writeHeader(DataOutputStream dos, byte command, String fileName) throws IOException {
 
         dos.writeByte(VERSION_NUMBER);
         dos.writeByte(command);

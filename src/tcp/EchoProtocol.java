@@ -9,5 +9,4 @@ public class EchoProtocol  implements ConnectionHandler {
         int received = is.read();
         os.write(received);
     }
-
 }
